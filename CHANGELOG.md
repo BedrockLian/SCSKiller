@@ -4,6 +4,20 @@ All notable changes to the SCSKiller app and command line. Versions follow [Sema
 
 ## [Unreleased]
 
+- Added a HoYo fork README, distribution/dependency guide, Windows package entry points, source provenance and SHA-256
+  output. Fork packaging runs reader tests and reuses upstream's self-contained runtime/native/license checks without
+  bundling Oodle; a dedicated workflow verifies source pushes and can build candidate packages on demand.
+- HoYo detection continues past an unsupported first resource, so a Zenless BBL manifest cannot hide readable mhy1
+  archives. Added regression coverage for both Zenless and Star Rail.
+- Verified 172,560 DX11 items across the three installed games through the native host on RTX 5060 Laptop / 617.42,
+  with no failures or driver skips. Game-side cache hits and frame-time improvements remain unverified.
+- Added an experimental read-only Genshin BLB3 shader reader, including concatenated containers, LZ4HC/Oodle blocks,
+  object-scoped extraction and hash-checked shader materialization. Driver-cache effectiveness remains unverified.
+- Unity shader maps now separate SM5 and SM6 programs within each object.
+- Extended the experimental offline reader to Star Rail ENCR/mr0k and Zenless mhy1 resources, including dictionary-backed
+  Star Rail shader code and its unaligned UnityFS headers. Zenless BBL resources remain unsupported and are reported.
+- Removed the obsolete sixteen-segment limit for standard Unity shader blobs. Reader cache version is now 4.
+
 ## [1.4.5] - 2026-11-04
 
 **Improved**

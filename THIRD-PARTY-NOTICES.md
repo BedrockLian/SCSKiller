@@ -14,6 +14,7 @@ SCSKiller's own licence: GPL-3.0-or-later (LICENSE), with an additional permissi
 | System.Numerics.Tensors | 10.0.10 | MIT | © Microsoft Corporation | https://github.com/dotnet/runtime | [L1](#l1) |
 | Windows App SDK (Runtime 2.5.1, Foundation 2.3.12, Base 2.0.4, Interactive Experiences 2.1.9) | 2.5.1 | LicenseRef-Microsoft-WindowsAppSDK | © Microsoft Corporation | https://github.com/microsoft/windowsappsdk | [L2](#l2) |
 | Microsoft.Windows.SDK.NET (C#/WinRT projection, WinRT.Runtime) | 10.0.26100.57 | LicenseRef-Microsoft-WindowsSDK | © Microsoft Corporation | https://aka.ms/WinSDKLicenseURL | - |
+| AnimeStudio BLB3/mhy1/mr0k crypto, tables and format layouts | 68700c7d885a | MIT | Copyright (c) 2016 Radu; 2016-2020 Perfare; 2022-2024 Razmoth; 2024-2026 Escartem | https://github.com/Escartem/AnimeStudio | [L44](#l44) |
 | CUE4Parse | 1.2.2.202609 | Apache-2.0 | Copyright (c) 2026 FabianFG | https://github.com/FabianFG/CUE4Parse | [L4](#l4) |
 | Blake3.NET | 3.0.2 | BSD-2-Clause | Copyright (c) 2020, Alexandre Mutel | https://github.com/xoofx/Blake3.NET | [L5](#l5) |
 | BouncyCastle.Cryptography | 2.6.2 | MIT | Copyright (c) 2000-2025 The Legion of the Bouncy Castle Inc. | https://www.bouncycastle.org | [L6](#l6) |
@@ -1991,6 +1992,38 @@ Used by: Tmds.DBus.Protocol
 MIT License
 
 Copyright Tom Deseyn
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+### L44
+
+AnimeStudio BLB3, mhy1 and mr0k crypto, key tables and archive/shader layout definitions, pinned to commit
+68700c7d885a68a444886bd4b7f7827e77789e12. The source retains the attribution to Chris Hulbert for the original AES implementation.
+
+```text
+MIT License
+
+Copyright (c) 2016 Radu
+Copyright (c) 2016-2020 Perfare
+Copyright (c) 2022-2024 Razmoth
+Copyright (c) 2024-2026 Escartem
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

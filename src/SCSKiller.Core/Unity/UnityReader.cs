@@ -21,6 +21,7 @@ namespace SCSKiller.Core.Unity;
 public sealed class UnityReader : IEngineReader
 {
     public const string Family = "Unity";
+    readonly GenshinReader genshin = new();
 
     /// <summary>Where Unity players keep their Player.log: %USERPROFILE%\AppData\LocalLow.</summary>
     public string LocalLow { get; init; } = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "AppData", "LocalLow");
@@ -34,6 +35,7 @@ public sealed class UnityReader : IEngineReader
     /// install folder, or one or two levels below it (Xbox "Content\", a zip-shaped "Normal\").</summary>
     public static (string Player, string Data)? Find(Game game)
     {
+        if (GenshinReader.FindData(game) is { } genshinData) return (Path.GetDirectoryName(genshinData)!, genshinData);
         var opts = new EnumerationOptions { RecurseSubdirectories = true, MaxRecursionDepth = 1, IgnoreInaccessible = true, AttributesToSkip = 0 };
         IEnumerable<string> dirs = [Path.GetDirectoryName(game.ExePath) ?? "", game.InstallDir];
         if (Directory.Exists(game.InstallDir)) dirs = dirs.Concat(GameFiles.EnumerateDirectories(game.InstallDir, "*", opts));
@@ -47,11 +49,16 @@ public sealed class UnityReader : IEngineReader
         return null;
     }
 
-    public int ReaderVersion(EngineInfo engine) => 2;
+    public int ReaderVersion(EngineInfo engine) => 4;
+
+    public string IndexStamp(Game game, EngineInfo? engine) =>
+        (engine == null || GenshinReader.Handles(engine)) && Find(game) is var (_, data) && GenshinReader.ForkOf(game, data) != null ? GenshinReader.Stamp(data) : "";
 
     public EngineInfo? Detect(Game game)
     {
         if (Find(game) is not var (player, data)) return null;
+        bool isGenshin = GenshinReader.FindData(game) != null;
+        string? fork = GenshinReader.ForkOf(game, data);
         string? version = null;
         int[]? apis = null;
         int probed = 0, readable = 0; // a few built-in Shader objects: a layout this reader can't read fails here, not as an empty index
@@ -63,7 +70,12 @@ public sealed class UnityReader : IEngineReader
                 foreach (var o in src.File.Objects.Where(o => o.ClassId == ShaderClass).Take(3 - probed))
                 {
                     probed++;
-                    try { if (ShaderBlob(src.Read(o.Start, (int)o.Size)) != null) readable++; }
+                    try
+                    {
+                        var bytes = src.Read(o.Start, (int)o.Size);
+                        if (isGenshin ? GenshinReader.Containers((off, n) => bytes.AsSpan((int)off, n).ToArray(), 0, bytes.Length, default).Any()
+                            : ShaderBlob(bytes) != null) readable++;
+                    }
                     catch (Exception e) when (e is IOException or InvalidDataException) { }
                 }
             }
@@ -72,9 +84,10 @@ public sealed class UnityReader : IEngineReader
         var lastRun = LastRun(PlayerLog(data));
         var launch = UnrealRhi.LaunchOptions(game);
         var api = Api(apis, lastRun, launch);
-        return new EngineInfo(Family, version, null, api, false,
+        return new EngineInfo(Family, version, fork, api, false,
             CarvedReader.OldDxReason(api) ?? (probed > 0 && readable == 0 ? $"Unity {version}: none of {probed} built-in shaders has DirectX (d3d11) code this reader can read" : null),
-            ApiGuessed: ApiGuessed(apis, LaunchApi(launch) ?? lastRun), OffersVulkan: apis?.Contains(VulkanApi) == true || api.StartsWith("Vulkan", StringComparison.Ordinal));
+            ApiGuessed: ApiGuessed(apis, LaunchApi(launch) ?? lastRun), Note: fork != null ? GenshinReader.Note + (fork == GenshinReader.Zenless ? " BBL resources are not yet readable." : "") : null,
+            OffersVulkan: apis?.Contains(VulkanApi) == true || api.StartsWith("Vulkan", StringComparison.Ordinal));
     }
 
     const int VulkanApi = 21;   // GraphicsDeviceType.Vulkan in the build's list
@@ -137,6 +150,8 @@ public sealed class UnityReader : IEngineReader
 
     public ShaderIndex Index(Game game, EngineInfo engine, IProgress<string>? log, CancellationToken ct)
     {
+        ct.ThrowIfCancellationRequested();
+        if (GenshinReader.Handles(engine)) return genshin.Index(game, engine, log, null, ct);
         var sw = Stopwatch.StartNew();
         var data = Find(game)?.Data ?? throw new DirectoryNotFoundException($"{game.InstallDir}: no Unity data folder");
         var locs = new Dictionary<string, Loc>();
@@ -160,7 +175,6 @@ public sealed class UnityReader : IEngineReader
                     catch (Exception e) when (e is IOException or InvalidDataException) { unreadable++; continue; } // a bad bundle block
                     if (programs == null) { noBlob++; continue; }
                     var shas = new List<string>();
-                    var dxil = false;
                     foreach (var c in programs)
                     {
                         var sha = Convert.ToHexStringLower(SHA1.HashData(c));
@@ -172,11 +186,10 @@ public sealed class UnityReader : IEngineReader
                             catch (Exception e) when (e is ArgumentException or IndexOutOfRangeException) { bad++; }
                         if (!shaders.ContainsKey(sha)) continue;
                         shas.Add(sha);
-                        dxil |= !Dxbc.Part(c, "DXIL"u8).IsEmpty;
                     }
                     shas = shas.Distinct().ToList();
-                    var h = CarvedReader.Sha1Hex(string.Join(',', shas.Order(StringComparer.Ordinal)));
-                    if (shas.Count > 0 && mapHashes.Add(h)) maps.Add(new ShaderMap(h, rel, dxil ? "PCD3D_SM6" : "PCD3D_SM5", shas));
+                    foreach (var map in ObjectMaps(rel, shas, shaders))
+                        if (mapHashes.Add(map.Hash)) maps.Add(map);
                 }
             }
         located[game.Id] = locs;
@@ -199,6 +212,7 @@ public sealed class UnityReader : IEngineReader
     /// isn't found and fails at replay.</summary>
     public void ReadShaders(Game game, EngineInfo engine, IReadOnlySet<string> sha1s, Action<string, byte[]> sink, CancellationToken ct)
     {
+        if (GenshinReader.Handles(engine)) { genshin.ReadShaders(game, engine, sha1s, sink, ct); return; }
         if (!located.TryGetValue(game.Id, out var locs))
         {
             Index(game, engine, null, ct);
@@ -218,6 +232,18 @@ public sealed class UnityReader : IEngineReader
                 foreach (var c in programs)
                     if (Convert.ToHexStringLower(SHA1.HashData(c)) is var sha && sha1s.Contains(sha) && sent.Add(sha)) sink(sha, c);
             }
+        }
+    }
+
+    public ShaderIndex Index(Game game, EngineInfo engine, IProgress<string>? log, IProgress<(int Done, int Total)>? progress, CancellationToken ct) =>
+        GenshinReader.Handles(engine) ? genshin.Index(game, engine, log, progress, ct) : Index(game, engine, log, ct);
+
+    internal static IEnumerable<ShaderMap> ObjectMaps(string library, IEnumerable<string> hashes, IReadOnlyDictionary<string, ShaderInfo> shaders)
+    {
+        foreach (var group in hashes.Distinct().GroupBy(sha => shaders[sha].ShaderModel.Contains("_6_", StringComparison.Ordinal) ? "PCD3D_SM6" : "PCD3D_SM5"))
+        {
+            var ordered = group.Order(StringComparer.Ordinal).ToArray();
+            yield return new(CarvedReader.Sha1Hex(string.Join(',', ordered)), library, group.Key, ordered);
         }
     }
 

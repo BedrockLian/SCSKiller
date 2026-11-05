@@ -1,5 +1,18 @@
 # Contributing
 
+This is the community HoYo fork. File fork-specific bugs in
+[BedrockLian/SCSKiller](https://github.com/BedrockLian/SCSKiller/issues), with the game version, build commit and relevant
+log excerpt. Do not upload game assets or shader bytecode. Build and distribution instructions are in
+[docs/hoyo-readers.md](docs/hoyo-readers.md) and [docs/releasing.md](docs/releasing.md).
+Changes should preserve ordinary Unity behavior and the upstream anti-cheat boundary. Run the synthetic reader suite:
+
+```powershell
+dotnet test tests/SCSKiller.Tests/SCSKiller.Tests.csproj -c Release --filter 'Needs!=Game'
+```
+
+The upstream contribution policy below describes contributions sent to BlueHeisenberg/SCSKiller. This fork's ordinary
+changes are reviewed and committed here; they do not imply acceptance or release by upstream.
+
 Bugs and game requests go in Issues, with the templates. Security problems go through [SECURITY.md](SECURITY.md), never
 a public issue.
 

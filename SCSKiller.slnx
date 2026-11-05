@@ -8,4 +8,7 @@
     <Project Path="src/SCSKiller.Ui.Models/SCSKiller.Ui.Models.csproj" />
     <Project Path="src/SCSKiller.Ui/SCSKiller.Ui.csproj" />
   </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/SCSKiller.Tests/SCSKiller.Tests.csproj" />
+  </Folder>
 </Solution>

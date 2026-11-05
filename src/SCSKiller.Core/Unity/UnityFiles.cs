@@ -258,7 +258,7 @@ public static class UnityFiles
                 if (q + 4 > o.Length || U(o, q) != n) return null;
                 q += 4;
                 for (var i = 0; i < n; i++)
-                    if (UArray(o, ref q, 16) is { Length: > 0 } x && (a == 0 || x.Length == arrays[0][i].Length)) arrays[a].Add(x);
+                    if (UArray(o, ref q, o.Length / 4) is { Length: > 0 } x && (a == 0 || x.Length == arrays[0][i].Length)) arrays[a].Add(x);
                     else return null;
             }
             else if (UArray(o, ref q, n) is { } x && x.Length == n) arrays[a].AddRange(x.Select(v => new[] { v }));
