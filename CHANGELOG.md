@@ -4,6 +4,8 @@ All notable changes to the SCSKiller app and command line. Versions follow [Sema
 
 ## [Unreleased]
 
+- Read Zenless platform 25 SM6 bytecode and raw ray-tracing shader libraries. Include the verified extensionless PC SDK
+  bundles in HoYo indexing and cache stamps, and invalidate plans built with the previous HoYo reader.
 - Added a HoYo fork README, distribution/dependency guide, Windows package entry points, source provenance and SHA-256
   output. Fork packaging runs reader tests and reuses upstream's self-contained runtime/native/license checks without
   bundling Oodle; a dedicated workflow verifies source pushes and can build candidate packages on demand.

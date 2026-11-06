@@ -225,24 +225,26 @@ public static class UnityFiles
 
     /// <summary>The compressed blob of a Shader object, found by its shape: <c>platforms</c> (u32 array), then
     /// <c>offsets</c>, <c>compressedLengths</c>, <c>decompressedLengths</c> (u32 arrays per platform before 2019.3, arrays of
-    /// arrays after), then <c>compressedBlob</c> (u32 length + bytes). The first candidate whose d3d11 segments all
-    /// LZ4-decode to their stated size wins. Returns each d3d11 segment decompressed; null = no such blob (no d3d11 code).
+    /// arrays after), then <c>compressedBlob</c> (u32 length + bytes). The first candidate whose selected platform's
+    /// segments all decode to their stated size wins. Returns null when no such blob is found.
     /// ponytail: a shape scan over the object instead of the per-version SerializedShader layout (m_ParsedForm is ~100 fields
     /// that change every few versions); a false match must also decode as LZ4 to exact sizes. Parse m_ParsedForm per version
     /// if a game ever breaks it.</summary>
-    public static List<byte[]>? ShaderBlob(ReadOnlySpan<byte> o)
+    public static List<byte[]>? ShaderBlob(ReadOnlySpan<byte> o) => ShaderBlob(o, D3D11Platform);
+
+    internal static List<byte[]>? ShaderBlob(ReadOnlySpan<byte> o, uint platform)
     {
         for (var p = 0; p + 16 <= o.Length; p += 4)
         {
             var n = U(o, p);
             if (n is 0 or > 32) continue;
             foreach (var nested in (bool[])[true, false])
-                if (Shape(o, p, (int)n, nested) is var (segs, blobAt) && Decode(o, segs, blobAt) is { } d) return d;
+                if (Shape(o, p, (int)n, nested, platform) is var (segs, blobAt) && Decode(o, segs, blobAt) is { } d) return d;
         }
         return null;
     }
 
-    static (List<Segment>, int)? Shape(ReadOnlySpan<byte> o, int p, int n, bool nested)
+    static (List<Segment>, int)? Shape(ReadOnlySpan<byte> o, int p, int n, bool nested, uint platform)
     {
         var q = p + 4;
         if (q + 4 * n > o.Length) return null;
@@ -274,7 +276,7 @@ public static class UnityFiles
             {
                 uint off = arrays[0][i][j], cl = arrays[1][i][j], dl = arrays[2][i][j];
                 if ((long)off + cl > len || dl > 256u << 20) return null;
-                if (plats[i] == D3D11Platform && cl > 0) segs.Add(new Segment(plats[i], (int)off, (int)cl, (int)dl));
+                if (plats[i] == platform && cl > 0) segs.Add(new Segment(plats[i], (int)off, (int)cl, (int)dl));
             }
         return (segs, q);
     }

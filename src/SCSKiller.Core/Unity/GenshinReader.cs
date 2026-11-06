@@ -15,6 +15,8 @@ internal sealed class GenshinReader
     public const string Fork = "Genshin-BLB3";
     public const string Note = "Experimental offline shader reader; driver-cache effectiveness has not been verified. Base and updated asset variants are both included.";
     public const string StarRail = "StarRail-ENCR", Zenless = "Zenless-mhy1";
+    const int RayTracingShaderClass = 825902497;
+    const uint ZenlessDxilPlatform = 25;
     public static bool Handles(EngineInfo engine) => engine.Fork is Fork or StarRail or Zenless;
     sealed record Location(string Path, long? Container, string? Node, long Offset, int Size, bool Blob = false);
     readonly ConcurrentDictionary<string, IReadOnlyDictionary<string, Location>> located = new();
@@ -71,7 +73,19 @@ internal sealed class GenshinReader
         return null;
     }
 
-    static IEnumerable<string> Paths(string data) => GameFiles.EnumerateFiles(data, "*", new EnumerationOptions { RecurseSubdirectories = true, MaxRecursionDepth = 8, IgnoreInaccessible = true, AttributesToSkip = 0 }).Where(p => Path.GetExtension(p).Equals(".blk", StringComparison.OrdinalIgnoreCase) || Path.GetExtension(p).Equals(".block", StringComparison.OrdinalIgnoreCase) || Path.GetDirectoryName(p) == data || Path.GetDirectoryName(p) == Path.Combine(data, "Resources")).Where(p => !Resource(p)).Order(GameFiles.PathOrder);
+    static bool BlockPack(string path) => Path.GetExtension(path).Equals(".blk", StringComparison.OrdinalIgnoreCase)
+        || Path.GetExtension(path).Equals(".block", StringComparison.OrdinalIgnoreCase);
+
+    static IEnumerable<string> Paths(string data)
+    {
+        string resources = Path.Combine(data, "Resources"), sdk = Path.Combine(data, "StreamingAssets", "MiHoYoSDKRes", "PC");
+        return GameFiles.EnumerateFiles(data, "*", new EnumerationOptions { RecurseSubdirectories = true, MaxRecursionDepth = 8, IgnoreInaccessible = true, AttributesToSkip = 0 })
+            .Where(p => BlockPack(p) || Path.GetDirectoryName(p) == data || Path.GetDirectoryName(p) == resources
+                || (Path.GetDirectoryName(p)?.Equals(sdk, StringComparison.OrdinalIgnoreCase) == true
+                    && (Path.GetFileName(p).Equals("PC", StringComparison.OrdinalIgnoreCase)
+                        || Path.GetFileName(p).Equals("mihoyo_sdk_res", StringComparison.OrdinalIgnoreCase))))
+            .Where(p => !Resource(p)).Order(GameFiles.PathOrder);
+    }
     public static string Stamp(string data)
     {
         using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA1);
@@ -102,23 +116,12 @@ internal sealed class GenshinReader
         {
             ct.ThrowIfCancellationRequested();
             content.AppendData(Encoding.UTF8.GetBytes(ContentStamps.Of(GameFiles.Rel(data, path), path)));
-            if (Path.GetExtension(path).Equals(".blk", StringComparison.OrdinalIgnoreCase) || Path.GetExtension(path).Equals(".block", StringComparison.OrdinalIgnoreCase))
+            if (BlockPack(path))
             {
                 using var archive = Archive(path, engine);
-                long previous = -1;
                 try
                 {
-                    foreach (var node in archive.Nodes(ct))
-                    {
-                        if (node.Container != previous)
-                        {
-                            containers++;
-                            previous = node.Container;
-                        }
-
-                        if (!Resource(node.Name))
-                            Scan(node.Read, node.Size, path, node.Container, node.Name);
-                    }
+                    ScanArchive(path, archive);
                 }
                 catch (NotSupportedException e)
                 {
@@ -133,12 +136,15 @@ internal sealed class GenshinReader
                 ReadAt read = (off, n) => ReadFile(file, length, off, n);
                 if (ReadSerialized(read, length) != null)
                     Scan(read, length, path, null, null);
-                else if (engine.Fork == StarRail && read(0, 8).AsSpan().StartsWith("UnityFS\0"u8))
+                else if (engine.Fork == Fork && read(0, 4).AsSpan().SequenceEqual("Blb\x03"u8))
+                {
+                    using var archive = new GenshinArchive(path);
+                    ScanArchive(path, archive);
+                }
+                else if (engine.Fork == StarRail && Bundle.IsBundle(read(0, 8)))
                 {
                     using var archive = new HoyoArchive(path, false);
-                    foreach (var node in archive.Nodes(ct))
-                        if (!Resource(node.Name))
-                            Scan(node.Read, node.Size, path, node.Container, node.Name);
+                    ScanArchive(path, archive);
                 }
                 else
                 {
@@ -159,13 +165,29 @@ internal sealed class GenshinReader
         located[game.Id] = locations;
         log?.Report($"{engine.Fork}: {done} files, {containers} containers, {objects} shader objects -> {shaders.Count} shaders, {maps.Count} maps, {skipped} skipped resources, {bad} unparseable containers ({watch.Elapsed.TotalSeconds:F1}s)");
         return new(Convert.ToHexStringLower(content.GetHashAndReset()), maps.Select(m => m.Platform).Distinct().Order(StringComparer.Ordinal).ToList(), shaders, maps);
+        void ScanArchive(string path, IHoyoArchive archive)
+        {
+            long previous = -1;
+            foreach (var node in archive.Nodes(ct))
+            {
+                if (node.Container != previous)
+                {
+                    containers++;
+                    previous = node.Container;
+                }
+
+                if (!Resource(node.Name))
+                    Scan(node.Read, node.Size, path, node.Container, node.Name);
+            }
+        }
+
         void Scan(ReadAt read, long length, string path, long? container, string? node)
         {
             ct.ThrowIfCancellationRequested();
             var sf = ReadSerialized(read, length);
             if (sf == null)
                 return;
-            foreach (var obj in sf.Objects.Where(o => o.ClassId is ShaderClass or ComputeShaderClass))
+            foreach (var obj in sf.Objects.Where(o => o.ClassId is ShaderClass or ComputeShaderClass or RayTracingShaderClass))
             {
                 if (obj.Start < 0 || obj.Size < 0 || obj.Start > length || obj.Size > length - obj.Start)
                     throw new InvalidDataException("Shader object outside serialized node");
@@ -225,7 +247,11 @@ internal sealed class GenshinReader
         IEnumerable<byte[]> blobs = ShaderBlob(bytes) ?? Enumerable.Empty<byte[]>();
         if (engine.Fork == StarRail)
             blobs = StarRailShaderBlob.Decode(bytes).Concat(blobs);
-        return blobs.SelectMany(b => Dxbc.Containers(b).Select(c => c.Container));
+        var programs = blobs.SelectMany(b => Dxbc.Containers(b).Select(c => c.Container));
+        if (engine.Fork == Zenless && ShaderBlob(bytes, ZenlessDxilPlatform) is { } dxil)
+            programs = programs.Concat(dxil.SelectMany(b => Dxbc.Containers(b).Select(c => c.Container))
+                .Where(code => Dxbc.DxilShaderModel(code) is { Major: 6 }));
+        return programs;
     }
 
     public void ReadShaders(Game game, EngineInfo engine, IReadOnlySet<string> hashes, Action<string, byte[]> sink, CancellationToken ct)

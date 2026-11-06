@@ -30,11 +30,12 @@ the compile queue and the recorder's lifecycle. It builds for Windows (`net10.0-
   game with no readable shader at all (`CarvedReader.RecordedOnly`) plans only the pipelines of this PC's recording, from
   the shader bytes it holds. `Unity/GenshinReader` handles verified HoYo layouts (Genshin BLB3 without UnityPlayer.dll,
   Star Rail ENCR and Zenless mhy1):
-  stream consecutive container headers, decode blocks on demand, scan Shader/ComputeShader object ranges, and retain
+  stream consecutive container headers, decode blocks on demand, scan Shader/ComputeShader/RayTracingShader object ranges, and retain
   physical/container/node offsets for hash-checked materialization. Each object's SM5/SM6 programs use separate maps.
   Base and Persistent variants are both indexed; no runtime mount precedence or driver-cache effectiveness is implied.
   `HoyoArchive` reads variable-size ENCR/mhy1 blocks; `StarRailShaderBlob` decodes platform code arrays with their LZ4
-  dictionaries. Compressed-code locations retain their parent object so materialization decodes each object once.
+  dictionaries. The extensionless PC SDK bundles use the same BLB3 or UnityFS paths as their game. Zenless Shader objects
+  also expose DXIL from platform 25. Compressed-code locations retain their parent object for decoding during materialization.
   Zenless BBL resources are explicitly skipped and logged. Ordinary Unity blobs use input-derived segment bounds.
 - *Planner* (`Planning/`): `Planner` and `PlanBuilder` turn index, recording and caps into a plan. `RootSig` rebuilds
   the root signatures engines create at run time, from `plan-rules.json` (`RulesFile`). `UnitCover` picks the fewest

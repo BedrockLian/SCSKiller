@@ -1,6 +1,9 @@
 using System.Buffers.Binary;
+using System.Security.Cryptography;
 using System.Text;
+using K4os.Compression.LZ4;
 using SCSKiller.Core;
+using SCSKiller.Core.Carved;
 using SCSKiller.Core.Unity;
 using Xunit;
 
@@ -64,6 +67,77 @@ public sealed class HoyoExpansionTests
     {
         using var fixture = new GenshinReaderTests.Install();
         var cab = GenshinReaderTests.Serialized((72, GenshinReaderTests.Shader(false)));
+        string path = Path.Combine(fixture.Root, "data.unity3d");
+        File.WriteAllBytes(path, RailUnityFs(cab));
+        using var archive = new HoyoArchive(path, false);
+        var node = Assert.Single(archive.Nodes(default));
+        Assert.Equal(cab, node.Read(0, cab.Length));
+        Assert.Equal(cab, archive.NodeAt(0, node.Name)!.Read(0, cab.Length));
+    }
+
+    [Fact]
+    public void StarRail_indexes_and_reads_an_extensionless_SDK_bundle()
+    {
+        using var fixture = new RailInstall();
+        var reader = new UnityReader();
+        var engine = reader.Detect(fixture.Game)!;
+        var before = reader.IndexStamp(fixture.Game, engine);
+        var code = Dxbc.Container("SHDR"u8, [0x50, 0, 1, 0, 2, 0, 0, 0]);
+        var sdk = Path.Combine(fixture.Game.InstallDir, "StarRail_Data", "StreamingAssets", "MiHoYoSDKRes", "PC");
+        Directory.CreateDirectory(sdk);
+        File.WriteAllBytes(Path.Combine(sdk, "mihoyo_sdk_res"), RailUnityFs(GenshinReaderTests.Serialized((72, code))));
+
+        Assert.NotEqual(before, reader.IndexStamp(fixture.Game, engine));
+        AssertIndexedAndRead(reader, fixture.Game, engine, code, Stage.Vertex, "vs_5_0");
+    }
+
+    [Theory]
+    [InlineData(false, 48, Stage.Pixel, "ps_6_0")]
+    [InlineData(true, 825902497, Stage.Library, "lib_6_5")]
+    public void Zenless_indexes_and_reads_platform_25_and_ray_libraries(bool ray, int classId, Stage stage, string model)
+    {
+        using var fixture = new GenshinReaderTests.Install();
+        string data = Path.Combine(fixture.Root, "ZenlessZoneZero_Data");
+        Directory.CreateDirectory(data);
+        var game = fixture.Game with { ExePath = Path.Combine(fixture.Root, "ZenlessZoneZero.exe") };
+        File.WriteAllBytes(game.ExePath, []);
+        File.WriteAllBytes(Path.Combine(fixture.Root, "UnityPlayer.dll"), []);
+        File.Copy(Path.Combine(fixture.Data, "globalgamemanagers"), Path.Combine(data, "globalgamemanagers"));
+        var code = ray ? Dxbc.Container("DXIL"u8, [0x65, 0, 6, 0, 6, 0, 0, 0, .. new byte[16]]) : GenshinReaderTests.Shader(true);
+        File.WriteAllBytes(Path.Combine(data, "globalgamemanagers.assets"), GenshinReaderTests.Serialized((classId, ray ? code : Platform25Blob(code))));
+        var engine = new EngineInfo("Unity", "2019.4.40f1", "Zenless-mhy1", "D3D12", false, null);
+
+        AssertIndexedAndRead(new UnityReader(), game, engine, code, stage, model);
+    }
+
+    static void AssertIndexedAndRead(UnityReader reader, Game game, EngineInfo engine, byte[] code, Stage stage, string model)
+    {
+        var sha = Convert.ToHexStringLower(SHA1.HashData(code));
+        var index = reader.Index(game, engine, null, default);
+        Assert.True(index.Shaders.TryGetValue(sha, out var shader), $"Missing {model} bytecode");
+        Assert.Equal((stage, model), (shader.Stage, shader.ShaderModel));
+        var received = new List<byte[]>();
+        reader.ReadShaders(game, engine, new HashSet<string> { sha }, (_, bytes) => received.Add(bytes), default);
+        Assert.Equal(code, Assert.Single(received));
+    }
+
+    static byte[] Platform25Blob(byte[] code)
+    {
+        var decoded = new byte[1024];
+        code.CopyTo(decoded, 32);
+        byte[] packed = new byte[LZ4Codec.MaximumOutputSize(decoded.Length)];
+        int length = LZ4Codec.Encode(decoded, packed);
+        Assert.InRange(length, 1, decoded.Length - 1);
+        using var stream = new MemoryStream();
+        using var writer = new BinaryWriter(stream);
+        foreach (int word in new[] { 1, 25, 1, 1, 0, 1, 1, length, 1, 1, decoded.Length, length })
+            writer.Write(word);
+        writer.Write(packed, 0, length);
+        return stream.ToArray();
+    }
+
+    static byte[] RailUnityFs(byte[] cab)
+    {
         var encr = Encr(cab);
         int tableSize = BinaryPrimitives.ReadInt32BigEndian(encr.AsSpan(13));
         using var stream = new MemoryStream();
@@ -87,12 +161,7 @@ public sealed class HoyoExpansionTests
         stream.Write(encr.AsSpan(25));
         var bytes = stream.ToArray();
         BinaryPrimitives.WriteInt64BigEndian(bytes.AsSpan((int)sizeAt), bytes.Length);
-        string path = Path.Combine(fixture.Root, "data.unity3d");
-        File.WriteAllBytes(path, bytes);
-        using var archive = new HoyoArchive(path, false);
-        var node = Assert.Single(archive.Nodes(default));
-        Assert.Equal(cab, node.Read(0, cab.Length));
-        Assert.Equal(cab, archive.NodeAt(0, node.Name)!.Read(0, cab.Length));
+        return bytes;
     }
 
     [Fact]

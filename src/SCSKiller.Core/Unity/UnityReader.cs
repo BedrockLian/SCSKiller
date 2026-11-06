@@ -49,7 +49,7 @@ public sealed class UnityReader : IEngineReader
         return null;
     }
 
-    public int ReaderVersion(EngineInfo engine) => 4;
+    public int ReaderVersion(EngineInfo engine) => GenshinReader.Handles(engine) ? 5 : 4;
 
     public string IndexStamp(Game game, EngineInfo? engine) =>
         (engine == null || GenshinReader.Handles(engine)) && Find(game) is var (_, data) && GenshinReader.ForkOf(game, data) != null ? GenshinReader.Stamp(data) : "";
