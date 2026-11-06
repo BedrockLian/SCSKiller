@@ -1,6 +1,6 @@
 # SCSKiller HoYo 包使用说明
 
-这是 [BedrockLian/SCSKiller](https://github.com/BedrockLian/SCSKiller) 的 Windows x64 社区预发布包。
+这是 [BedrockLian/SCSKiller](https://github.com/BedrockLian/SCSKiller) 的 Windows x64 社区发行包。
 原神 BLB3、崩铁 ENCR、绝区零 mhy1 的读取、编译输入准备及本机 NVIDIA DX11 原生预热已验证；
 三款游戏实际缓存命中和帧时间收益尚未验证，其他供应商/驱动没有本次适配的 GPU 验证结果。
 绝区零 BBL 不支持，会记录并跳过。完整支持说明见
@@ -10,7 +10,7 @@
 
 1. 在发行页面取得 ZIP 和同名 `.sha256`；用 `Get-FileHash <ZIP路径> -Algorithm SHA256` 比较哈希。
 2. 完整解压到当前用户可写目录。不要在压缩包预览中运行，也不要只复制 EXE。
-3. 双击 `Start-SCSKiller.cmd`。内部 EXE 直接启动会显示开发版提示，这是保留的上游数据隔离检查。
+3. 双击 `SCSKiller.exe` 或 `Start-SCSKiller.cmd`。请保留包内的 `.scskiller-hoyo-portable` 标记。
 4. 在界面扫描或手动添加本机游戏，核对引擎识别与日志，再进行索引和规划。当前读取器只读游戏资源。
 
 需要 Windows 10 2004（19041）或更新版本的 x64 系统，以及支持 AVX2/BMI2 的 CPU。
@@ -25,7 +25,7 @@
 ./SCSKiller-CLI.cmd --version
 ```
 
-两个启动脚本使用同一个包内 `data/`，并关闭测试录制器开关。保持这个数据目录设置时，
+GUI 和 CLI 默认使用同一个包内 `data/`，两个启动脚本还会关闭测试录制器开关。保持这个数据目录设置时，
 程序会按上游规则拒绝录制器安装和依赖正式安装的系统集成功能。不需要管理员权限。
 
 ## 更新与卸载

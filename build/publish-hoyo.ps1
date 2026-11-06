@@ -1,7 +1,7 @@
 <#
 .SYNOPSIS
 Builds a self-contained Windows x64 HoYo fork zip without redistributing Oodle.
-The unpacked launcher selects a separate data folder; this is not a Velopack install or update feed.
+The standalone package uses a separate data folder; this is not a Velopack install or update feed.
 #>
 param([string]$Version = '1.4.5-hoyo.1', [switch]$NoZip)
 $ErrorActionPreference = 'Stop'
@@ -17,6 +17,7 @@ if ($LASTEXITCODE -ne 0) { throw 'Reader regression tests failed; no package was
 & (Join-Path $PSScriptRoot 'publish.ps1') -NoOodle -NoZip -Version $Version
 $dist = Join-Path $repo 'dist'
 $out = Join-Path $dist 'SCSKiller'
+[IO.File]::WriteAllText((Join-Path $out '.scskiller-hoyo-portable'), '')
 Copy-Item (Join-Path $PSScriptRoot 'hoyo\Start-SCSKiller.cmd'), (Join-Path $PSScriptRoot 'hoyo\SCSKiller-CLI.cmd') $out
 Copy-Item (Join-Path $repo 'docs\distribution.md') (Join-Path $out 'README.md')
 $sha = git -C $repo rev-parse HEAD
@@ -33,6 +34,23 @@ foreach ($entry in 'SCSKiller.exe', 'cli\scskiller.exe') {
     $process = Start-Process -FilePath (Join-Path $out $entry) -ArgumentList '--version' -WindowStyle Hidden -Wait -PassThru -RedirectStandardOutput $stdout -RedirectStandardError $stderr
     $got = [IO.File]::ReadAllText($stdout).Trim()
     if ($process.ExitCode -ne 0 -or $got -ne $Version) { throw "Wrong version or failed startup: $entry ($got); $([IO.File]::ReadAllText($stderr))" }
+}
+# --version exits before the development-build guard. An unknown command reaches it without scanning games.
+$start = [Diagnostics.ProcessStartInfo]::new((Join-Path $out 'cli\scskiller.exe'), 'hoyo-package-smoke')
+$start.UseShellExecute = $false
+$start.CreateNoWindow = $true
+$start.RedirectStandardError = $true
+[void]$start.EnvironmentVariables.Remove('SCSKILLER_DATA_DIR')
+[void]$start.EnvironmentVariables.Remove('SCSKILLER_ALLOW_LIVE_DATA')
+$process = [Diagnostics.Process]::Start($start)
+try {
+    $message = $process.StandardError.ReadToEnd()
+    $process.WaitForExit()
+    if ($process.ExitCode -ne 1 -or $message -notmatch 'unknown command .*hoyo-package-smoke') {
+        throw "Direct portable launch did not pass the startup guard: $message"
+    }
+} finally {
+    $process.Dispose()
 }
 $zipName = "SCSKiller-HoYo-$Version-win-x64.zip"
 if (-not $NoZip) {

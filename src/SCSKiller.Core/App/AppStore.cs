@@ -351,8 +351,22 @@ public sealed class AppStore(string dataDir)
     /// (<see cref="ScsKiller.RecorderDir"/>).</summary>
     public static string DefaultDir => Moved ?? _defaultDir.Value;
 
-    /// <summary>SCSKILLER_DATA_DIR's folder; null = the default.</summary>
-    public static string? Moved => Environment.GetEnvironmentVariable("SCSKILLER_DATA_DIR") is { Length: > 0 } d ? Path.GetFullPath(d) : null;
+    /// <summary>The explicit SCSKILLER_DATA_DIR override or the standalone HoYo package's isolated data folder.</summary>
+    public static string? Moved => Environment.GetEnvironmentVariable("SCSKILLER_DATA_DIR") is { Length: > 0 } d
+        ? Path.GetFullPath(d) : HoyoData.Value;
+
+    static readonly Lazy<string?> HoyoData = new(() => HoyoPackageData(AppContext.BaseDirectory));
+
+    internal static string? HoyoPackageData(string baseDir)
+    {
+        const string marker = ".scskiller-hoyo-portable";
+        string root = Path.TrimEndingDirectorySeparator(baseDir);
+        if (File.Exists(Path.Combine(root, marker))) return Path.Combine(root, "data");
+        // The packaged CLI is one directory below the GUI and uses the same isolated data.
+        return Path.GetFileName(root).Equals("cli", StringComparison.OrdinalIgnoreCase)
+            && Path.GetDirectoryName(root) is { } parent && File.Exists(Path.Combine(parent, marker))
+            ? Path.Combine(parent, "data") : null;
+    }
 
     /// <summary>Why a copy on a moved data folder leaves alone what starts SCSKiller later (the sign-in entry, the
     /// driver-update task or service, the menu entry): those start it without SCSKILLER_DATA_DIR, on the default folder,

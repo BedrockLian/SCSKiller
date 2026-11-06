@@ -3,7 +3,7 @@
 基于 [BlueHeisenberg/SCSKiller](https://github.com/BlueHeisenberg/SCSKiller) 的社区分支，增加原神、
 崩坏：星穹铁道、绝区零的离线着色器资源读取。保留上游的界面、游戏扫描、编译规划和原生预热宿主。
 
-**当前定位：Windows x64 预发布版本。** 已验证资源索引、字节码回读、编译输入准备和本机 NVIDIA DX11 预热；尚未验证三款游戏
+**当前定位：Windows x64 社区发行版。** 已验证资源索引、字节码回读、编译输入准备和本机 NVIDIA DX11 预热；尚未验证三款游戏
 实际运行时的驱动缓存命中或卡顿改善。绝区零 BBL 补丁清单仍不支持。请勿将这些游戏标记为已完成稳定适配。
 
 - [本分支源码](https://github.com/BedrockLian/SCSKiller) · [发行页面](https://github.com/BedrockLian/SCSKiller/releases)
@@ -39,7 +39,7 @@ DX11/DX12 的硬件、供应商和管线信息限制沿用上游，详见[支持
 如果页面没有附件，请按下文自行构建。
 
 1. 核对 SHA-256 后，将整个压缩包解压到可写目录。
-2. 双击 **`Start-SCSKiller.cmd`**。数据保存在包内 `data/`，不使用上游安装版的数据区。
+2. 双击 **`SCSKiller.exe`** 或 **`Start-SCSKiller.cmd`**。默认数据保存在包内 `data/`。
 3. 在界面中扫描或添加游戏目录，再检查识别结果和日志。首次读取 Oodle 资源需要联网下载项目锁定并校验的解码器。
 4. 更新时退出旧进程，将旧包的 `data/` 保留到新包；重新扫描游戏，不复制旧程序 DLL。
 
@@ -49,7 +49,7 @@ Oodle DLL 不随包分发；当前 HoYo 路线需要 AVX2/BMI2 CPU。
 未签名程序可能触发 Windows 的发布者提示，校验和用于检查文件一致性，不能代替代码签名。
 
 启动脚本保持录制器关闭，不修改游戏文件、系统环境变量或上游安装数据。
-直接双击内部 `SCSKiller.exe` 会显示开发构建提示，请使用包内启动脚本。
+请保留解压目录中的 `.scskiller-hoyo-portable` 标记，直接启动时依靠它定位包内数据目录。
 
 ## 从源码构建
 
