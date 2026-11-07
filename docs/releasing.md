@@ -1,12 +1,12 @@
 # 本分支的发布验证
 
-适用范围是 Windows x64 HoYo 预发布包。它复用上游 v1.4.5 的构建体系，不使用上游的签名密钥、
-安装器发布流程或自动更新源。源码更新、Actions 构建产物、预发布包和游戏内有效性是不同的交付状态。
+适用范围是 Windows x64 HoYo 便携包。它复用上游 v1.4.6 的构建体系，不使用上游的签名密钥、
+安装器发布流程或自动更新源。源码合并、Actions 构建、GitHub 发行和游戏内验证分别记录。
 
 ## 制作候选包
 
 1. 同步上游 `main`，审查冲突，更新支持范围、`CHANGELOG.md` 和基线提交。
-2. 从干净提交构建：`./build/publish-hoyo.ps1 -Version 1.4.5-hoyo.1`。
+2. 从干净提交构建：`./build/publish-hoyo.ps1 -Version 1.4.6-hoyo.1`。
    版本必须使用 `X.Y.Z-hoyo.N`，不能冒用上游版本；增加 N 区分不同候选包。
 3. 脚本先运行不依赖游戏的回归测试，再执行上游完整原生和自包含打包检查。
    `dist/SCSKiller/build-info.json` 必须为 `modified: false`，记录的提交须可公开取得。

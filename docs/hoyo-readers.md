@@ -1,8 +1,8 @@
 # 原神、崩铁、绝区零：构建与运行
 
 这是基于 [BlueHeisenberg/SCSKiller](https://github.com/BlueHeisenberg/SCSKiller) 的实验性源码分支，
-整合原神 BLB3、崩铁 ENCR、绝区零 mhy1 离线着色器读取器。同步基线为上游 v1.4.5：
-`02a91be56f1c32c9b21a5aac6cad5e86d6e1b75a`（2026-11-04）。
+整合原神 BLB3、崩铁 ENCR、绝区零 mhy1 离线着色器读取器。同步基线为上游 v1.4.6，
+提交 `c6422e3cf0033cef101b8346697dd493c7685776`（2026-11-06）。
 本分支的构建包和源码入口见 [README](../README.md)；上游发行版不包含这些新增适配。
 当前三款游戏保持实验性状态，分发流程见 [发布验证要求](releasing.md)。
 

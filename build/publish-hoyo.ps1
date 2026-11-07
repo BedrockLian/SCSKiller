@@ -3,10 +3,10 @@
 Builds a self-contained Windows x64 HoYo fork zip without redistributing Oodle.
 The standalone package uses a separate data folder; this is not a Velopack install or update feed.
 #>
-param([string]$Version = '1.4.5-hoyo.1', [switch]$NoZip)
+param([string]$Version = '1.4.6-hoyo.1', [switch]$NoZip)
 $ErrorActionPreference = 'Stop'
 if ([Environment]::OSVersion.Platform -ne [PlatformID]::Win32NT) { throw 'This package targets Windows x64.' }
-if ($Version -notmatch '^\d+\.\d+\.\d+-hoyo\.\d+$') { throw 'Use a fork prerelease version, e.g. 1.4.5-hoyo.1.' }
+if ($Version -notmatch '^\d+\.\d+\.\d+-hoyo\.\d+$') { throw 'Use a fork version, e.g. 1.4.6-hoyo.1.' }
 $repo = Split-Path $PSScriptRoot -Parent
 $dotnet = 'dotnet'
 if ($env:DOTNET_ROOT -and (Test-Path (Join-Path $env:DOTNET_ROOT 'dotnet.exe'))) { $dotnet = Join-Path $env:DOTNET_ROOT 'dotnet.exe' }

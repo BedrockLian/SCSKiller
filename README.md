@@ -13,12 +13,12 @@
 
 本分支由社区维护，与上游及游戏厂商均无隶属关系。上游发行版不含本分支的新增读取器；
 本分支的问题请提交到本仓库。上游产品介绍和原有游戏验证结果见
-[上游 README](https://github.com/BlueHeisenberg/SCSKiller/blob/02a91be56f1c32c9b21a5aac6cad5e86d6e1b75a/README.md)，
+[上游 README](https://github.com/BlueHeisenberg/SCSKiller/blob/c6422e3cf0033cef101b8346697dd493c7685776/README.md)，
 不能用作三款 HoYo 游戏的效果证明。
 
 ## 支持到哪一步
 
-同步基线：上游 **v1.4.5**，提交 `02a91be56f1c32c9b21a5aac6cad5e86d6e1b75a`。
+同步基线为上游 **v1.4.6**，提交 `c6422e3cf0033cef101b8346697dd493c7685776`。
 
 | 游戏 | 验证过的资源版本 | 已实现 | 尚未验证或实现 |
 |---|---|---|---|
@@ -71,7 +71,7 @@ cmake --build proxy/build --config Release --target scskiller_warm scskiller_war
 构建完整自包含分发包：
 
 ```powershell
-./build/publish-hoyo.ps1 -Version 1.4.5-hoyo.1
+./build/publish-hoyo.ps1 -Version 1.4.6-hoyo.1
 ```
 
 该命令先运行合成回归测试，复用上游的 x64/x86 原生组件和自包含发布检查，加入独立启动脚本、
