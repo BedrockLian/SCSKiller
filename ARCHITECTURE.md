@@ -24,11 +24,11 @@ the compile queue and the recorder's lifecycle. It builds for Windows (`net10.0-
   finds in the user's folders of games (each folder in one is a game). `GameFiles` picks the real
   exe and is the only anti-cheat detector. `Vac` decides Valve Anti-Cheat. `ReShade` classifies shader mods.
 - *Engine readers* (`Unreal/`, `Unity/`, `FromSoft/`, `ReEngine/`, `RedEngine/`, `Northlight/`, `Dagor/`, `Rage/`,
-  `Source2/`, `NaughtyDog/`, `SantaMonica/`, `Nixxes/`, `Tank/`, `Decima/`, `Luminous/`, `ForzaTech/`, `BlackSpace/`, `Swarm/`, `Snowdrop/`, and `Carved/` for any
+  `Source2/`, `NaughtyDog/`, `SantaMonica/`, `Nixxes/`, `Tank/`, `Decima/`, `Luminous/`, `ForzaTech/`, `BlackSpace/`, `Swarm/`, `Snowdrop/`, `Frostbite/`, `CryEngine/`, and `Carved/` for any
   game shipping raw DXBC/DXIL): each lists the build's shaders as a `ShaderIndex` grouped in shader maps (shaders that can be drawn
   together) and reads their bytes on demand. A shader is the SHA-1 of its container (`ShaderContainer.Parse`). A DirectX 12
-  game with no readable shader at all (`CarvedReader.RecordedOnly`) plans only the pipelines of this PC's recording, from
-  the shader bytes it holds. `Unity/GenshinReader` handles verified HoYo layouts (Genshin BLB3 without UnityPlayer.dll,
+  game with no readable shader at all, or such a DirectX 11 game (`CarvedReader.RecordedOnly`), plans only the
+  pipelines of this PC's recording, from the shader bytes it holds. `Unity/GenshinReader` handles verified HoYo layouts (Genshin BLB3 without UnityPlayer.dll,
   Star Rail ENCR and Zenless mhy1):
   stream consecutive container headers, decode blocks on demand, scan Shader/ComputeShader/RayTracingShader object ranges, and retain
   physical/container/node offsets for hash-checked materialization. Each object's SM5/SM6 programs use separate maps.
@@ -54,7 +54,8 @@ the compile queue and the recorder's lifecycle. It builds for Windows (`net10.0-
 
 **Recorder** (`proxy/proxy.cpp`, built as `d3d12.dll`). Forwards every export to the system DLL. Only in an admitted
 launch (see [Rules](#rules)) does it hook the device and record what the game creates. As `d3d11.dll`, in a DirectX 11
-game on AMD, it records input layouts. Otherwise it is a pure pass-through that writes nothing in the game folder.
+game on AMD, it records input layouts. With the signed `shaders=1` (a packed DirectX 11 game, AMD or NVIDIA) it records
+every shader the game creates, each a bare `'B'` (`proxy/shaders11.h`). Otherwise it is a pure pass-through that writes nothing in the game folder.
 
 **scskiller_warm.exe** (`proxy/warm.cpp`, `proxy/warm11.cpp`). Stages a copy of itself named like the game's exe, plus
 the recorder DLL and the work folder's databases, in a new folder, and runs it. In that copy the DLL runs in warm mode
@@ -84,10 +85,13 @@ limits and quotas. The client side of every exchange is in Core's *Community* an
    its own recorder. Engine and anti-cheat verdicts are cached in `scan.json` while exe, store build and SCSKiller build
    hold; an anti-cheat verdict also only while the marker it found is there and the install root's and exe folder's
    entries (`ScsKiller.FolderStamp`) are as they were, else the game is checked in full again. A verdict found outside a
-   scan (an install, a reconcile, a pass) knows no marker path: the next scan checks the game in full. A check that ran
+   scan (an install, a reconcile, a pass) knows no marker path: the next scan checks the game in full. "No anti-cheat" is
+   never reused for a game the recorder is in or may go in: each evaluation walks it in full, junctions followed. The
+   2-minute pass walks a recorder game again only after a change under its watched install (a local drive, Windows), one
+   walk at a time per disk; an unwatched install is walked at every pass. A check that ran
    out of time or failed keeps the recorder out but is never held: the 2-minute pass walks the game again while no compile
    runs, and a full check begun after it that finds none clears it.
-2. **Read.** The engine reader builds the `ShaderIndex`. Archive keys come from the user or a pinned download and stay
+2. **Read.** The engine reader builds the `ShaderIndex`. Archive keys come from the game's exe, the user or a pinned download and stay
    local. Read, Plan and Materialize run on below-normal threads, no more than the compile's thread setting
    (`ScsKiller.Lowered`, every reader's loop through `ReaderLoops`).
 3. **Check.** `Planner.Check` gives `Unsupported`, `NeedsRecording` or `Ready`. Without a recording, `Ready` needs a
@@ -117,12 +121,12 @@ limits and quotas. The client side of every exchange is in Core's *Community* an
 ### Recorder
 
 1. **Install** (`ReconcileRecorders`) into compatible games only: supported, no anti-cheat, not VAC, writable without
-   elevation, not running. On NVIDIA, where the first `d3d12.dll` comes with Streamline (`GameFiles.StreamlineFirst`),
+   elevation, not running. Where the first `d3d12.dll` comes with Streamline (`GameFiles.StreamlineFirst`),
    the preloader (`proxy/preload.cpp`) goes in beside it under the first of `ScsKiller.PreloadNames` the exe imports
    statically and no other file holds: its DllMain loads the recorder at process start, and its exports jump to System32's
    DLL of its name. Proton's Wine loads it before its own, unless the game's `WINEDLLOVERRIDES` sets that name builtin
-   first or off, which rules the name out. With no such name the game isn't recorded. A foreign `d3d12.dll` blocks it unless the user chains it (renamed to
-   `d3d12.scskiller-next.dll`, loaded via `next=` in `scskiller.ini`). A proxy deleted while chained (the mod's own
+   first or off, which rules the name out. With no such name the game isn't recorded on NVIDIA, and records through `d3d12.dll` as before on other GPUs. A foreign `d3d12.dll` blocks it unless the user chains it (renamed to
+   `d3d12.scskiller-next.dll`, loaded via `next=` in `scskiller.cfg`). A proxy deleted while chained (the mod's own
    uninstall) leaves the renamed file unused and turns recording off for the game: never reinstalled around, never put back.
    On AMD, where the exe has AGS make its device (`GameFiles.AgsMakesTheDevice`: it imports
    `agsDriverExtensionsDX12_CreateDevice` and the wrapper fits its `amd_ags_x64.dll`, `GameFiles.AgsUnfit`: AGS 5.2 to 5.4
@@ -162,13 +166,14 @@ refused with why otherwise (`BeforeAfterRecorderReady`). `BeforeAfter.Compare` r
 - **D3D11** has no create rows, so a run whose csv launch has `#api,d3d11` compares every hitch of 50 ms or more, the
   time frozen, the worst hitch and the 1% low, with no shader split and no ready share. Stutters on
   loading screens count too.
-- **NVIDIA, D3D11** (`ScsKiller.Frames11`): the `d3d11.dll` records frame times only (SCSKiller's `scskiller.ini` has
-  `frames_only=1`: no `scskiller.db`, no keys file, no input layout hook), for the game page's frame-time graph. It goes
+- **NVIDIA, D3D11** (`ScsKiller.Frames11`): the `d3d11.dll` records frame times only (SCSKiller's `scskiller.cfg` has
+  `frames_only=1`: no `scskiller.db`, no keys file, no input layout hook), for the game page's frame-time graph. A packed
+  game (below) records in full instead. It goes
   in as any recorder does, by "Record in all compatible games" and the game's switch (`ScsKiller.Frames11Play`, on Intel
   only for a pair), and during a pair whatever the setting, unless the switch is Off. It is stamped only when one of those wants it and with that line, else taken out as
-  for VAC. A `scskiller.ini` that isn't SCSKiller's refuses it. Every other recorder rule applies.
+  for VAC. A `scskiller.cfg` that isn't SCSKiller's refuses it. Every other recorder rule applies.
 - **In-game panel** (`proxy/overlay.h`): while a run is armed or playing and the pair has it on, SCSKiller's
-  `scskiller.ini` has `overlay=1`, `ab_play_s` and `ab_tag`. In the outermost Present the recorder copies a panel to the
+  `scskiller.cfg` has `overlay=1`, `ab_play_s` and `ab_tag`. In the outermost Present the recorder copies a panel to the
   top right of the back buffer: the time left, a progress bar, the last 5 s of frame times with a 50 ms line, and on
   D3D12 "SHADER COMPILATION STUTTER!" for 2 s after each shader compilation stutter within the play time, by
   `FrameLog`'s rule on the creates that end in the frame (the recorder's last creates in a ring the present reads
@@ -231,12 +236,12 @@ nothing else, and sets only the game page's similar-systems line.
   Under Wine (Proton) Steam's data is the Linux Steam's, through Wine's drives, in the folder Steam starts the game
   with, never the game's library (`SteamSource.AppInfoPath`, `appinfo_path` in the proxy).
 - *One place acts.* Every verdict goes through `ScsKiller.AntiCheatFound`, which takes the recorder out, at once or
-  when the game exits; its `scskiller.ini` goes at once, beside a running game too (`StripIni`). Verdicts come from the
+  when the game exits; its `scskiller.cfg` goes at once, beside a running game too (`StripIni`). Verdicts come from the
   scan, a refresh, a game's exit, an exe or build change, and a full check of every recorder game every 2 minutes
   (`CheckRecorderGames`), the only one that sees anti-cheat an update puts deep in an install while the app runs.
 - *Install* checks before the copy, after it and as its last step. Engine readers read an anti-cheat game's exe file
   only for its archive key (`UnrealKeys`, `SoulsKeys`, `DecimaKeys`), never its running process.
-- *Admission* (`admitted()` in `proxy/proxy.cpp`) records only when `scskiller.ini` carries a valid stamp for the exe
+- *Admission* (`admitted()` in `proxy/proxy.cpp`) records only when `scskiller.cfg` carries a valid stamp for the exe
   as it is now, no marker is in the exe's folder or any folder above it up to the install root (`root=`), the path has
   no `Riot Games` folder, no anti-cheat module is loaded, `vac_now` clears VAC from Steam's files, the dll loaded from
   the exe's folder, the folder isn't on the revocation list, and the ini is unchanged when it decides. The reason for a
@@ -245,7 +250,7 @@ nothing else, and sets only the game page's similar-systems line.
   to this process. Then the proxy admits past what those checks find and logs it. `risk=` without a pid or with another
   value is refused (`risk= malformed`), and what a check couldn't inspect still refuses. Only the two session starts
   sign it, and a bound session without it ignores only EasyAntiCheat's own marker names. The stamp also signs `vendor=amd`
-  (the AGS hook) and the in-game panel's lines, so a hand edit can't turn either on. The AGS hook goes in when AGS loads,
+  (the AGS hook), `shaders=1` and the in-game panel's lines, so a hand edit can't turn any of them on. The AGS hook goes in when AGS loads,
   on a check of the stamp without its key, and admission takes it out unless `vendor=amd` is in the ini it verified. `frames_only=1` stays unsigned: it
   only narrows what is recorded.
 - *Sessions (app only):* the recorder goes into an anti-cheat game only in a session the user allowed for that game and
@@ -264,7 +269,7 @@ nothing else, and sets only the game page's similar-systems line.
   the setting off clears each such game's switch and removes a leftover session's files. Any other launch is a
   pass-through.
 
-**The stamp.** `scskiller.ini`'s `exe_size=` and `exe_time=` are taken before a full anti-cheat check and written,
+**The stamp.** `scskiller.cfg`'s `exe_size=` and `exe_time=` are taken before a full anti-cheat check and written,
 with `sig=`, only when it is clean and no finding or removal came since (`ScsKiller.RemovalGen`). `sig=` is an
 HMAC-SHA1 under `recorder.key` of the exe's file key (its file identity, the same through links and the WindowsApps
 path; `proxy/recorder_key.h`), the stamp, `root=` and the identity of the folder it names from the exe folder's
@@ -339,8 +344,7 @@ not write its cache.
   news and verdicts follow its build's channel, not one an AppImage run chose.
 - `plan-rules.json` and `news.json` from the server are signed with separate keys (`ContentTrust`). Server rules that
   shrink a plan below `Planner.MinRulesShare` lose to the embedded ones.
-- Stable releases are Authenticode-signed. Codecs, the AMD AGS DLL and downloaded archive keys are pinned by hash or
-  commit.
+- Stable releases are Authenticode-signed. Codecs, the AMD AGS DLL and downloaded archive keys are pinned by hash or commit.
 - Access tokens are PASETO `v4.public`, signed by the server with a key only it holds and verified with public keys.
 
 ## Data locations
@@ -350,14 +354,14 @@ and a Steam Vulkan game's recorder is registered by its manifest's copy in `$XDG
 
 | Where | What |
 |---|---|
-| `%LOCALAPPDATA%\SCSKiller\` | `settings.json`, scan caches (`discovered.json`, `scan.json`, `games.json`, `middleware.json`, `reshade.json`, `manual-games.json`), the user's game folders, removed and renamed games (`added-library.json`), the Library's sort (`library-view.json`), `recorders.log`, whose each game folder's `scskiller.ini` is (`recorder-inis.json`), the app's log (`app.log`, up to 1 MB, then `app.log.1`), `auth.dat`, `upload.dat`, `update-staged.json`, `codecs\`, on Linux `instance.lock` (flocked by the folder's one app instance, with its socket's name) |
+| `%LOCALAPPDATA%\SCSKiller\` | `settings.json`, scan caches (`discovered.json`, `scan.json`, `games.json`, `middleware.json`, `reshade.json`, `ags.json`, `manual-games.json`), the user's game folders, removed and renamed games (`added-library.json`), the Library's sort (`library-view.json`), `recorders.log`, whose each game folder's `scskiller.cfg` is (`recorder-inis.json`), the app's log (`app.log`, up to 1 MB, then `app.log.1`), `auth.dat`, `upload.dat`, `update-staged.json`, `codecs\`, on Linux `instance.lock` (flocked by the folder's one app instance, with its socket's name) |
 | `...\games\<id>\` | `state.json` (`GameRecord`), `plan.bin`, `plan-*.keys`, `warm-*.keys`, `index.*`, `recording.db`, `community.db`, `official.db`, `draws.db`, `work\`, warm logs, `compile-error.log`, `scskiller.warmed`, `compiled.keys`, `stopped-scskiller_failed.keys`, keys for the game (`aes.key`, `archive.keys`, `pak.modulus`, `paz.key`) |
 | `...\games\<id>\sessions\` | `<launch unix ms>.json`: a launch's frame report with its driver, build and swap chain (`Snapshots`, `"v": 1`). The newest 20 are kept, plus a before and after pair's two pinned ones. Removing an added game deletes them, Clear recording doesn't |
 | `...\packs\`, `...\community\` | Middleware packs, the community manifest and shared packs |
 | `...\recorder.key`, `recorder.revoked`, `arms\`, `refused\` | The recorder's signing key (0600 on Linux), revocation list, each armed folder's `arm=` and last refusals (each copy's in its own data folder) |
-| `...\vulkan-layer\<key>\`, `...\vulkan\<exe file key>\` | A Vulkan game's recorder: the layer's copy and manifest (`VulkanLayer.Key`), for a Steam game registered as a value of `HKCU\SOFTWARE\Khronos\Vulkan\ImplicitLayers` and enabled only by `SteamAppId=<appid>`; and what it records there (`scskiller.*.foz`, `scskiller_creates.csv`, `scskiller_frames.bin`, `scskiller.log`). Beside the exe it has only `scskiller.ini` |
+| `...\vulkan-layer\<key>\`, `...\vulkan\<exe file key>\` | A Vulkan game's recorder: the layer's copy and manifest (`VulkanLayer.Key`), for a Steam game registered as a value of `HKCU\SOFTWARE\Khronos\Vulkan\ImplicitLayers` and enabled only by `SteamAppId=<appid>`; and what it records there (`scskiller.*.foz`, `scskiller_creates.csv`, `scskiller_frames.bin`, `scskiller.log`). Beside the exe it has only `scskiller.cfg` |
 | `...\vulkan-layer\vk_loader_settings.json` | Windows: the Vulkan loader settings file (loader 1.3.255 and later), a value of `HKCU\SOFTWARE\Khronos\Vulkan\LoaderSettings`. One entry per Vulkan game that isn't Steam's turns its layer on for that exe path alone, after the layers the loader finds itself. Not installed while another program's settings file is registered. A game process at high integrity (run as administrator) reads neither HKCU list, so its recorder note says so (`GameRecord.RanElevated`) |
-| Beside the game's exe | `d3d12.dll` or `d3d11.dll`, `scskiller.ini`, `scskiller.keys`, `scskiller.warmed`, `scskiller.db`, `scskiller.log`, `scskiller_creates.csv`, `scskiller_frames.bin`, `scskiller.ledger` (a portable or test copy's), a chained mod |
+| Beside the game's exe | `d3d12.dll` or `d3d11.dll`, `scskiller.cfg` (not an `.ini`, which BSIPA refuses in the game folder, and an earlier build's `scskiller.ini` is read only while no `scskiller.cfg` is there), `scskiller.keys`, `scskiller.warmed`, `scskiller.db`, `scskiller.log`, `scskiller_creates.csv`, `scskiller_frames.bin`, `scskiller.ledger` (a portable or test copy's), a chained mod |
 | `$XDG_DATA_HOME/applications/`, `.../icons/hicolor/` (Linux) | An AppImage's menu entry `com.BlueHeisenberg.SCSKiller.desktop` (the package's, its Exec and TryExec naming `$APPIMAGE`, never the mount) and its icons, written at each start from an AppImage (`MenuEntry`), and removed at one whose file is refused. An entry without its `X-SCSKiller-AppImage` key is never changed |
 | `%LOCALAPPDATA%\SCSKiller.App\` | The Velopack install (`current\`, `native\`, `cli\`). Uninstall deletes it whole, so no data lives there |
 | `$XDG_CONFIG_HOME/autostart/`, `.../systemd/user/` (Linux) | The sign-in entry `com.BlueHeisenberg.SCSKiller.desktop`, added only by the user's toggle (`LinuxStartup`, a Flatpak's through the Background portal) and the driver-update check of Ask and When idle, `scskiller-rewarm.service` and `.timer` (`RewarmService`). Only files with an `X-SCSKiller` key are changed or removed |
@@ -454,6 +458,14 @@ compiles.
 - **Process-dependent:** what's kept varies with concurrency and compile order. The first launch after a warm is judged
   (`ScsKiller.PartlyWarmedShare`), and a partly warmed game offers the careful compile (`WarmPasses`).
 - **Files** are written through a memory map: write times never change, sizes do.
+- **Exit:** the driver writes behind the creates on the runtime's background workers, and an exit drops what's queued. A
+  warm process on AMD asks for as many workers as the compile's threads, at least the runtime's 4
+  (`BackgroundThreadCount`, undocumented, that process only). One with mapped `.parc` files stays until `COMMIT_RESULTS`'
+  event, or the end of the records going quiet where the call fails. The app shows that wait as saving the cache. A Stop
+  ends it at once and the next compile goes on from the last mark the driver signaled, or from where that process started
+  without one. On AMD a mark, a `COMMIT_RESULTS` event every `max(1000, total / 100)` items at the first unfinished item,
+  gives the stage its count of pipelines written. Only the final event ends the wait. One killed or dead during the wait does
+  the same, one crashed before it still loses that tail.
 - **Cap:** the whole DxcCache folder holds 16 GiB (`AmdAppCache.DxcCacheCap`), least recently accessed files evicted
   at device creation. Reading contents refreshes a file, so the app only lists names and sizes.
 - **Kept aside:** a compiled game's own files are hard-linked into its data folder (`AmdKept`). The driver evicts only
@@ -489,6 +501,11 @@ stages a warm covers.
 - **AMD:** a VS recompiles per read input element and topology class, so one with vertex inputs is warmed only from
   recorded layouts (`'D'`, `Draws11`). GS and HS compile with their VS and aren't warmed. PS and CS are warmed behind a
   generated VS.
+- **Packed games** (`Planner.Recorded11`, AMD and NVIDIA on Windows): files with no readable shader give no index, so the
+  signed `shaders=1` has the recorder keep every shader the game creates, and `PlanBuilder` takes those blobs as the
+  game's one map, the stages above included. Only what the recorded sessions created compiles. Their recorder goes in by
+  the game's own switch, not by "Record in all compatible games". A game with anti-cheat stays unsupported, and so does a
+  32-bit one.
 - **DXVK:** the warm runs through the game's DXVK d3d11.dll (`--d3d11`): a warmed VS+PS draws first in 3-10 ms against
   30-70 ms cold. NVIDIA keys its Vulkan cache on the exe name. AMD keys `VkCache` on the full exe path, which the staged
   warm can't share. Steam's launches redirect both vendors' caches to the app's folder, keyed on the app alone, so a
@@ -600,7 +617,7 @@ the sorted (stages + root signature) tuple hashes, less what the warm listed in 
 ### scskiller_warm.exe protocol
 
 Options: the header of `proxy/warm.cpp`. Stdout is JSON lines only (`stage`, `start`, `progress`, `stopping`, `done`,
-`retry`, `error`), parsed by `WarmEvent` in `Warming/Warmer.cs`. The items it didn't create (failed, abandoned or skipped as a
+`retry`, `writing`, `error`), parsed by `WarmEvent` in `Warming/Warmer.cs`. The items it didn't create (failed, abandoned or skipped as a
 crash) go by record key to `scskiller_failed.keys`. Exit 0 is completed or stopped, 1 failure, 3 retry. Replay
 follows file order, so a stopped run resumes with `--start <done>`. Stop is a named event or `--stop-file`, never a kill.
 A caller that can't read stdout (Proton) passes `--out` and `--err`: the lines go to files, `--out` ending with `exit`

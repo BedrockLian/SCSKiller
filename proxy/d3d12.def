@@ -97,3 +97,5 @@ EXPORTS
     SCSKiller_Known                                  @223
     SCSKiller_MemoryStop                             @224
     SCSKiller_Unbuilt                                @225
+    SCSKiller_WarmDiedAlone                          @227
+    SCSKiller_Finished                               @228

@@ -106,7 +106,7 @@ target_link_libraries(selftest d3dcompiler)
 target_include_directories(selftest PRIVATE third_party/vulkan)  # headers only; vulkan-1.dll is loaded at run time
 add_dependencies(selftest scskiller fakenext vkprobe_proxy)
 
-# A mod's d3d12.dll for `selftest chain` (scskiller.ini next=); test only, never published
+# A mod's d3d12.dll for `selftest chain` (scskiller.cfg next=); test only, never published
 add_library(fakenext SHARED fakenext.cpp fakenext.asm)
 
 # `selftest vkproxy`'s vulkan-1.dll: a jump per export of vk_exports.txt (System32's loader) through vk_real; test only,
@@ -136,6 +136,10 @@ target_include_directories(vkprobe_proxy PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 add_executable(scskiller_warm warm.cpp version.rc)
 # The same exe on the segment heap (warm.manifest), in segheap\ under the same file name: the warmer runs it on NVIDIA
 add_executable(scskiller_warm_segheap warm.cpp version.rc warm.manifest)
+if(SCSK_VERSION MATCHES "^0[.]0[.]0-internal")  # their test hooks, as the proxy's
+  target_compile_definitions(scskiller_warm PRIVATE SCSK_TEST_HOOKS)
+  target_compile_definitions(scskiller_warm_segheap PRIVATE SCSK_TEST_HOOKS)
+endif()
 set_target_properties(scskiller_warm_segheap PROPERTIES OUTPUT_NAME scskiller_warm
   RUNTIME_OUTPUT_DIRECTORY_RELEASE ${CMAKE_CURRENT_BINARY_DIR}/Release/segheap RUNTIME_OUTPUT_DIRECTORY_DEBUG ${CMAKE_CURRENT_BINARY_DIR}/Debug/segheap
   # both exes export the warm-host marker, so each writes a scskiller_warm.exp/.lib; keep them apart for parallel builds
@@ -197,7 +201,7 @@ if(NOT WIN32)  # the Linux replayer's --spirv-val: Fossilize's own SPIRV-Tools p
 endif()
 # the patch's SHA-256 with LF line ends, whatever the checkout made of them: a patch changed without this pin stops here
 set(FZ_PATCH ${CMAKE_CURRENT_SOURCE_DIR}/third_party/fossilize/scskiller.patch)
-set(FZ_PATCH_SHA256 D8C364BBAE6AEA2DDC3AAA8C9F7F4740304DE581273F155ECCC4A5CA63684635)
+set(FZ_PATCH_SHA256 AC29B31B930F1760C9E6FDE4735272EED02DD6C557DD0F4B10BFAEB437D363AF)
 file(READ ${FZ_PATCH} patch)
 string(REPLACE "\r\n" "\n" patch "${patch}")
 string(SHA256 FZ_PATCH_HASH "${patch}")

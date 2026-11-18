@@ -45,7 +45,8 @@ public sealed record EngineInfo(
     bool AftermathOff = false,   // Unreal: the config or the launch options turn Aftermath off: no retry with it
     bool KeyMissing = false,              // game files known to hold shaders stay encrypted, no key SCSKiller has opens them: the rest compiles, the user can add the key (Unreal: AES)
     bool KeyOptional = false,             // other game files stay encrypted, none known to hold shaders: the user can still add the key
-    string? FeatureLevel = null);         // a game shipping PCD3D_ES3_1 (Unreal: UnrealRhi.FeatureLevel): "ES3_1" the user runs it, "?" not known; null = its default
+    string? FeatureLevel = null,          // a game shipping PCD3D_ES3_1 (Unreal: UnrealRhi.FeatureLevel): "ES3_1" the user runs it, "?" not known; null = its default
+    bool VulkanOnly = false);             // the game has no DirectX renderer (CarvedReader.Hookshot): only Vulkan is offered
 
 /// <summary>Shader stage, numbered like D3D12_PIPELINE_STATE_SUBOBJECT_TYPE (the proxy's db uses the same numbers).</summary>
 public enum Stage { Vertex = 1, Pixel = 2, Domain = 3, Hull = 4, Geometry = 5, Compute = 6, Amplification = 24, Mesh = 25, Library = 100 }
@@ -82,9 +83,16 @@ public sealed record ShaderInfo(string Sha1, Stage Stage, string ShaderModel, in
 /// through ReadShaders), taken over the shaders' own: a shader the game draws with several root signatures carries none.
 /// <see cref="Layout"/>: the input layout the game creates that pipeline with (an Unreal pipeline cache's vertex declaration).
 /// <see cref="Copy"/>: "&lt;path&gt;|&lt;container&gt;" of a library that several containers hold at one path (the mount order's
-/// pick's path on every copy), on that pick and on its other copies (<see cref="ShaderIndex.OtherCopies"/>); null otherwise.</summary>
+/// pick's path on every copy), on that pick and on its other copies (<see cref="ShaderIndex.OtherCopies"/>); null otherwise.
+/// <see cref="States"/>: the pipeline state the game's files give a pooled map's pipelines without saying which shaders each
+/// uses (CRYENGINE's bin caches), most used first; null when the files give none.</summary>
 public sealed record ShaderMap(string Hash, string Library, string Platform, IReadOnlyList<string> Shaders, bool IsPipeline = false,
-    string? RootSignature = null, IReadOnlyList<Planning.PsoDb.LayoutElem>? Layout = null, string? Copy = null);
+    string? RootSignature = null, IReadOnlyList<Planning.PsoDb.LayoutElem>? Layout = null, string? Copy = null, IReadOnlyList<MapState>? States = null);
+
+/// <summary>One distinct state of a pooled map's pipelines: its input layout (null: a vertex format no file or table defines,
+/// empty: no vertex input), D3D12 topology type (0 unknown), render-target formats (slots 0-3, trailing unbound dropped) and
+/// depth-stencil format, all DXGI, and how many of the game's pipeline records have it. Guess: the layout is a best guess.</summary>
+public sealed record MapState(IReadOnlyList<Planning.PsoDb.LayoutElem>? Layout, uint Topology, IReadOnlyList<uint> Rt, uint Dsv, int Records, bool Guess = false);
 
 public sealed record ShaderIndex(
     string ContentHash,     // changes when the game's shader libraries change (game patch) -> plans built on it are stale
@@ -93,7 +101,8 @@ public sealed record ShaderIndex(
     IReadOnlyList<ShaderMap> Maps,
     IReadOnlyDictionary<string, byte[]>? RootSignatures = null,   // every ShaderInfo.RootSignature's blob (or its RTS0 part), by that SHA-1: the planner's coverage check reads them
     IReadOnlyList<string>? LegacyHashes = null,   // ContentHash as earlier versions may have taken it (UnrealReader: tied copies in another order); none: only ContentHash
-    IReadOnlyList<ShaderMap>? OtherCopies = null)   // the maps of a library's other copies at the same path (UnrealReader: a base pak and its patches), each with its ShaderMap.Copy: a recording may show the game reads one of them
+    IReadOnlyList<ShaderMap>? OtherCopies = null,   // the maps of a library's other copies at the same path (UnrealReader: a base pak and its patches), each with its ShaderMap.Copy: a recording may show the game reads one of them
+    IReadOnlyDictionary<string, int>? LeftOut = null)   // shaders the reader leaves out of every map, by why: the plan counts each as a stage set left out
 {
     /// <summary>The ContentHash of an index without shaders, SHA-1 of nothing: every such game has it, so it fingerprints no build.</summary>
     public const string EmptyContentHash = "da39a3ee5e6b4b0d3255bfef95601890afd80709";
@@ -339,7 +348,7 @@ public enum WarmOutcome { Completed, Stopped, Failed }
 /// <param name="Invalid">Vulkan pipelines naming a shader module that fails SPIR-V validation, never created (Steam's replayer
 /// skips them too). In Done, not in Failed or DriverSkipped.</param>
 /// <param name="Unsupported">pipelines needing a feature the GPU lacks, never created: Vulkan's by Fossilize's feature filter,
-/// D3D12's that the driver refused for blending on a render target format it can't blend.
+/// D3D12's that a Windows driver refused for blending on a render target format it can't blend (vkd3d-proton refuses none for it).
 /// In Done, not in Failed, DriverSkipped or Invalid.</param>
 /// <param name="Cached">D3D12 pipelines created without a compile stored, counted only while the game's Advanced Shader
 /// Delivery is registered for the compile: the delivery served them. In Done.</param>
@@ -367,8 +376,10 @@ public interface IWarmRun
     /// <summary>Graceful: in-flight compiles finish and the process exits normally so the driver writes its cache.
     /// Resume later with <see cref="WarmOptions.StartAt"/> = the stopped run's Done.</summary>
     void Stop();
-    /// <summary>The last process's done event: it now exits while the driver writes its cache. Null: not known for this run.</summary>
+    /// <summary>A process now waits or exits while the driver writes its cache: the last one's done event, any one's "writing" event. Null: not known for this run.</summary>
     Task? LastDone => null;
+    /// <summary>How far the driver's writes are known to have got, in pipelines. 0: not known.</summary>
+    long Written => 0;
 }
 
 public interface IWarmer
@@ -425,6 +436,7 @@ public sealed record GameState(
     double? PsoPerSecond = null,   // the game's last complete warm onto a cold cache (ScsKiller.ColdWarm), or a stopped one's until one completes; null = none measured
     FrameReport? LastFrames = null,    // the last launch's frame times (FrameLog); null = none measured
     bool ReShade = false,              // ReShade next to the game (Games.ReShade.Detect), with or without a ShaderMod
+    bool Luma = false,                 // ...loading a Luma add-on (ReShadeInstall.Luma): named Luma instead of ReShade
     string? ShaderMod = null,          // a ReShade add-on that changes the game's pipelines (Games.ReShade.Detect); null = none
     bool ShaderModBlocks = false,      // ...adds to every root signature, in a layer a copy can't reproduce (ReShadeInstall.Block): never compiled, recorded or shared
     bool ShaderModLayer = false,       // ...compiles through a copy of the layer (ScsKiller.LayerFor)
@@ -472,6 +484,7 @@ public sealed record GameState(
     string? CompileFailedWhy = null,   // why, when CompileFailed and it was kept (GameRecord.CompileFailedWhy)
     bool RiskEligible = false,         // Settings.RecordAntiCheatGames on, an OS with risk sessions (none on macOS yet, on Linux the Vulkan route's and a Steam launch's DirectX 12 under Proton, ScsKiller.ProtonDx12), anti-cheat or VAC detected, an engine on D3D12 or where a D3D11 recording records (ScsKiller.Records11Api), supported or not, no server verdict against it, a store launch SCSKiller can start (StoreLaunch.Supported), not OfflineEligible: a session in a game with its anti-cheat may be offered
     bool RiskNoLaunch = false,         // RiskEligible but for its store's launch: the page says why there is no session
+    bool RiskTrusted = false,          // Settings.RecordAntiCheatGames on, anti-cheat or VAC detected, its exe holds a trusted launch check (ScsKiller.TrustedLaunch), not OfflineEligible: no risk session, the page says why (ScsKiller.TrustedNote)
     string? SessionNote = null,        // the last risk session ended with nothing recorded (ScsKiller.SessionNote); null = nothing to show
     BeforeAfterInfo? BeforeAfter = null,   // a before and after recording in progress or done (GameRecord.BeforeAfter); null = none
     KeptCache? Kept = null,   // AMD: its compiled cache kept aside (Settings.KeepCachesAside); null = none kept

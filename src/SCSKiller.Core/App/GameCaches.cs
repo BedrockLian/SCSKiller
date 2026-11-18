@@ -1313,6 +1313,8 @@ public static partial class D3DSCache
     [DllImport(Sqlite)] static extern int sqlite3_step(nint stmt);
     [DllImport(Sqlite)] internal static extern nint sqlite3_column_text(nint stmt, int col);
     [DllImport(Sqlite)] internal static extern long sqlite3_column_int64(nint stmt, int col);
+    [DllImport(Sqlite)] internal static extern nint sqlite3_column_blob(nint stmt, int col);
+    [DllImport(Sqlite)] internal static extern int sqlite3_column_bytes(nint stmt, int col);
     [DllImport(Sqlite)] static extern int sqlite3_finalize(nint stmt);
     [DllImport(Sqlite)] static extern nint sqlite3_errstr(int rc);
     [DllImport(Sqlite)] static extern void sqlite3_progress_handler(nint db, int ops, Progress? check, nint arg);
@@ -1373,6 +1375,27 @@ public static class UnrealUserCache
             .SelectMany(d => Directory.EnumerateFiles(d, pattern, options))
             .Where(f => !Path.GetFullPath(f).StartsWith(install, StringComparison.OrdinalIgnoreCase))
             .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+    }
+}
+
+/// <summary>Unreal's driver-optimized PSO disk cache kept inside the install: files named <c>*D3DDriverByteCodeBlob*</c> in
+/// &lt;install&gt;\&lt;Project&gt;\Saved or a folder right under it (Phantom Blade Zero's <c>ProjectPBZ\Saved\Cache\PBZSplitPSO_*</c>).
+/// The game writes it at its own shader step and SCSKiller leaves it alone. Names only: no file is opened.</summary>
+public static class OwnBlobStore
+{
+    public const string Note = "This game keeps its own shader cache in its folder. SCSKiller doesn't clear or change it.";
+
+    public static bool In(string installDir)
+    {
+        var top = new EnumerationOptions { IgnoreInaccessible = true, AttributesToSkip = FileAttributes.ReparsePoint };
+        var saved = new EnumerationOptions { IgnoreInaccessible = true, AttributesToSkip = FileAttributes.ReparsePoint, RecurseSubdirectories = true, MaxRecursionDepth = 1, MatchCasing = MatchCasing.CaseInsensitive };
+        try
+        {
+            return Directory.Exists(installDir) && Directory.EnumerateDirectories(installDir, "*", top).Select(p => Path.Combine(p, "Saved"))
+                .Any(s => Directory.Exists(s) && !new DirectoryInfo(s).Attributes.HasFlag(FileAttributes.ReparsePoint)
+                    && Directory.EnumerateFiles(s, "*D3DDriverByteCodeBlob*", saved).Any());
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { return false; }
     }
 }
 
