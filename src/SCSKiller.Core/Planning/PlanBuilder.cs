@@ -521,7 +521,8 @@ sealed class PlanBuilder
         if (engine.FeatureLevel != null && index.Platforms.Contains(Es31))
             log?.Report($"{game.Name}: feature level {(engine.FeatureLevel == "ES3_1" ? "ES3_1 (user setting)" : "not known (no [D3DRHIPreference])")}: D3D11 shaders from {string.Join(" and ", plats11)}");
         var maps11 = indexMaps.Where(m => plats11.Length == 0 || plats11.Contains(m.Platform)).Select(m => m.Shaders.Where(h => bc.TryGetValue(h, out var s) && Planner.IsD3D11(s)).Select(h => bc[h]).ToList()).ToList();
-        if (Carved.CarvedReader.Recorded11(engine) && RecordedShaders11() is var recorded11 && recorded11.Count > 0)
+        if ((Carved.CarvedReader.Recorded11(engine) || Unity.GenshinReader.Handles(engine)) &&
+            RecordedShaders11() is { Count: > 0 } recorded11)
         {
             bc = bc.Concat(recorded11.Select(s => KeyValuePair.Create(s.Sha1, s))).DistinctBy(s => s.Key).ToDictionary();
             maps11.Add(recorded11);
@@ -549,14 +550,17 @@ sealed class PlanBuilder
         if (unpaired > 0) stats["d3d11_tess_unpaired"] = unpaired;
     }
 
-    /// <summary>The D3D10 and D3D11 shaders among the recording's blobs (<see cref="Carved.CarvedReader.Recorded11"/>).</summary>
+    /// <summary>The D3D10 and D3D11 shaders among the recording's blobs.</summary>
     List<ShaderInfo> RecordedShaders11()
     {
         var shaders = new List<ShaderInfo>();
         foreach (var h in recBlobs.Keys)
             try
             {
-                if (recBlobs.TryGetValue(h, out var b) && Unreal.ShaderContainer.Parse(b, h, new ResourceCounts(0, 0, 0, 0)) is var s && Planner.IsD3D11(s)) shaders.Add(s);
+                var shader = bc.GetValueOrDefault(h);
+                if (shader == null && recBlobs.TryGetValue(h, out var bytes))
+                    shader = Unreal.ShaderContainer.Parse(bytes, h, new ResourceCounts(0, 0, 0, 0));
+                if (shader != null && Planner.IsD3D11(shader)) shaders.Add(shader);
             }
             catch (Exception) { }   // a signature-only blob a game's input layout named, or a malformed one
         return shaders;

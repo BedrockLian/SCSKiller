@@ -5,6 +5,7 @@ All notable changes to the SCSKiller app and command line. Versions follow [Sema
 ## [Unreleased]
 
 - Merged upstream v1.4.8 while retaining the HoYo readers and standalone package data isolation.
+- Include eligible DirectX 11 shaders from an existing recording in the HoYo warmup plan alongside the install's shaders.
 - Fixed direct EXE startup from the standalone HoYo ZIP. The GUI and CLI default to the package's isolated data folder.
 - Read Zenless platform 25 SM6 bytecode and raw ray-tracing shader libraries. Include the verified extensionless PC SDK
   bundles in HoYo indexing and cache stamps, and invalidate plans built with the previous HoYo reader.

@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Text;
 using SCSKiller.Core;
 using SCSKiller.Core.Carved;
+using SCSKiller.Core.Planning;
 using SCSKiller.Core.Unity;
 using Xunit;
 
@@ -39,6 +40,40 @@ public sealed class GenshinReaderTests
         Assert.Equal(2, index.Maps.Count);
         Assert.All(index.Maps, map => Assert.All(map.Shaders, sha =>
             Assert.Equal(index.Shaders[sha].ShaderModel.Contains("_6_") ? "PCD3D_SM6" : "PCD3D_SM5", map.Platform)));
+    }
+
+    [Fact]
+    public void Dx11_plan_prepares_install_and_recorded_shaders_once()
+    {
+        using var f = new Install();
+        var reader = new UnityReader();
+        var index = reader.Index(f.Game, f.Engine, null, default);
+        var installed = Shader(false);
+        var recorded = Dxbc.Container("SHDR"u8, [0x50, 0, 5, 0, 2, 0, 0, 0]);
+        var sm6 = Shader(true);
+        var installedHash = PsoDb.Hex(SHA1.HashData(installed));
+        var recordedHash = PsoDb.Hex(SHA1.HashData(recorded));
+        var sm6Hash = PsoDb.Hex(SHA1.HashData(sm6));
+        var db = Path.Combine(f.Root, "recording.db");
+        using (var stream = File.Create(db))
+        {
+            PsoDb.WriteBlob(stream, installedHash, installed);
+            PsoDb.WriteBlob(stream, recordedHash, recorded);
+            PsoDb.WriteBlob(stream, sm6Hash, sm6);
+        }
+
+        var planner = new Planner();
+        var recording = new Recording(db);
+        var caps = new VendorCaps("nvidia-1", true, true, false);
+        var plan = planner.Build(f.Game, f.Engine, index, recording, caps, Path.Combine(f.Root, "plan"), null, default);
+        Assert.Equal(2, plan.Stats.D3D11Shaders);
+
+        var work = Path.Combine(f.Root, "work");
+        planner.Materialize(plan, f.Game, f.Engine, reader, recording, work, default);
+        var generated = PsoDb.Read(Path.Combine(work, "scskiller_gen.db")).Where(r => r.Tag == '1').ToArray();
+        Assert.Equal(2, generated.Length);
+        Assert.Equal(new[] { installedHash, recordedHash }.Order(), Rehydrate.References(generated).Order());
+        Assert.Equal("0 0", File.ReadAllText(Path.Combine(work, Planner.SkippedFile)));
     }
 
     [Fact]
